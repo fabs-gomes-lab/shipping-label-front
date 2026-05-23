@@ -136,3 +136,49 @@ location / {
     try_files $uri $uri/ /index.html;
 }
 ```
+
+## What I'd do next
+
+Given the 4-hour scope, several improvements were intentionally left out. These are the natural next steps in order of priority:
+
+### Forms and validation
+
+- **Form library** (React Hook Form + Zod) to replace the manual validation. Would simplify the create-label form significantly, centralize validation rules and provide better integration with TypeScript types.
+- **Field-level validation feedback** as the user types, instead of only on submit.
+- **Address autocomplete** using a service like Google Places or USPS Address Verification API to reduce typos and failed labels.
+
+### UX improvements
+
+- **Toast notifications** for success and error feedback instead of inline messages only.
+- **Optimistic UI** on label creation, showing the new label in the list immediately with a "processing" state, then reconciling with the server response.
+- **Label preview** — embed the PDF or PNG inline on the details page instead of relying solely on the download button.
+- **Address book** — save reusable addresses per user so they don't need to retype frequent senders and recipients.
+- **Filters and search** on the labels list (by status, date range, tracking code, recipient name).
+- **Pagination improvements** — page-size selector and jump-to-page input for larger label histories.
+
+### Testing
+
+- **Unit tests** for utility functions, formatters and validation helpers using Vitest.
+- **Component tests** for forms and key interactions using React Testing Library.
+- **End-to-end tests** with Playwright covering the login → create label → download flow.
+
+### Accessibility and i18n
+
+- **Accessibility audit** — proper ARIA labels, keyboard navigation, focus management on forms, and screen-reader testing.
+- **Internationalization structure** (react-i18next) even if only English is supported now, to prepare for future locales.
+- **High-contrast and dark mode** support.
+
+### Architecture and DX
+
+- **Error boundary** at the route level to catch unexpected React errors gracefully and report them to a monitoring tool.
+- **API response caching** with React Query or SWR to reduce redundant requests and improve perceived performance.
+- **Refresh token handling** when the backend supports it, with automatic retry on 401.
+- **CI pipeline** with GitHub Actions running lint, type-check and tests on every PR.
+- **Bundle analysis** and code splitting per route to keep the initial load light.
+
+### Production readiness
+
+- **Environment-specific builds** with proper handling of API base URL and feature flags.
+- **Error monitoring** (Sentry or similar) to catch runtime errors in production.
+- **Analytics** to understand usage patterns and prioritize the next iterations.
+
