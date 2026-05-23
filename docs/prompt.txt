@@ -1,0 +1,299 @@
+Crie um novo projeto frontend React do zero para consumir uma API Laravel de geração de etiquetas USPS. A configuração deve ser simples e mínima — apenas o necessário para rodar.
+Referência visual (importante — ler antes de começar)
+Na pasta docs/ do projeto existem quatro imagens de referência que definem o design e layout esperado das telas:
+
+docs/login.png → referência para a página de Login
+docs/listagem.png → referência para a página de Listagem de etiquetas
+docs/forms.png → referência para a página de Criação de etiqueta
+docs/detalhes.png → referência para a página de Detalhes da etiqueta
+
+Antes de implementar cada página, visualize a imagem correspondente usando a ferramenta de leitura de arquivos. A implementação deve reproduzir fielmente:
+
+Hierarquia e layout (posicionamento de elementos, agrupamento em cards/seções, alinhamento)
+Tipografia (tamanho relativo entre títulos, labels e textos)
+Espaçamentos (padding interno de cards, gaps entre elementos)
+Componentes visuais (badges de status coloridos, cards de métricas, tabelas com bordas finas, botões primários vs secundários)
+Ícones (usar ícones inline coerentes com o que aparece nas imagens — pode usar a fonte Tabler Icons via CDN, ou SVGs inline simples)
+Paleta de cores (visual claro, bordas finas 0.5px, status purchased em verde, failed em vermelho, botão primário em azul claro)
+
+Diretrizes gerais extraídas das referências:
+
+Header consistente em todas as páginas: ícone + título à esquerda, ações à direita
+Cards com border fina (0.5px) ao invés de sombras
+Status como badge colorido com fundo claro e texto escuro da mesma família de cor
+Botão primário sempre na cor de ação (azul claro), botões secundários neutros
+Tipografia enxuta: 13px para dados de tabela, 14-15px para labels, 18-22px para títulos
+Espaçamento generoso entre seções (~1.5rem)
+
+Se algum detalhe não estiver claro nas imagens, faça a escolha mais simples e mencione no final.
+Stack
+
+React 18+ (mais recente estável)
+TypeScript
+Vite como bundler
+React Router para navegação
+Axios para requisições HTTP
+npm como gerenciador de pacotes
+Sem biblioteca de UI pesada — use CSS puro ou CSS Modules (sem Tailwind, sem Material UI, sem styled-components)
+Sem gerenciador de estado externo (Redux, Zustand) — Context API + hooks bastam
+Para ícones: Tabler Icons via CDN (<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">) ou SVGs inline simples
+
+
+Passo 1 — Inicialização
+Crie o projeto com Vite:
+npm create vite@latest . -- --template react-ts
+(ou em uma pasta chamada frontend se o diretório atual não estiver vazio — pergunte antes se houver dúvida)
+Instale as dependências adicionais:
+npm install react-router-dom axios
+
+Passo 2 — Estrutura de pastas
+src/
+├── components/       # Componentes reutilizáveis (Input, Button, Loading, ErrorMessage)
+├── contexts/         # Contexts (AuthContext)
+├── hooks/            # Custom hooks (useAuth, useShippingLabels)
+├── pages/            # Páginas (Login, LabelsList, CreateLabel, LabelDetails)
+├── routes/           # Configuração de rotas e ProtectedRoute
+├── services/
+│   └── api/          # Cliente HTTP e endpoints da API
+├── types/            # Interfaces TypeScript
+├── utils/            # Funções utilitárias
+├── App.tsx
+└── main.tsx
+
+Passo 3 — CORS
+O backend Laravel já está configurado com allowed_origins: ['*'], portanto qualquer origem é aceita. Nenhuma configuração adicional é necessária no frontend.
+
+Passo 4 — Cliente HTTP
+Crie src/services/http.ts com uma instância Axios:
+
+baseURL vinda de import.meta.env.VITE_API_BASE_URL
+Interceptor de request: anexa Authorization: Bearer <token> se houver token no localStorage
+Interceptor de response: se vier 401, limpa o token e redireciona para /login
+Timeout de 30s
+
+Crie .env.example na raiz:
+VITE_API_BASE_URL=http://localhost:8000/api
+
+Passo 5 — Tipagens
+Em src/types/:
+api.ts — tipos de erro da API:
+tsexport interface ApiError {
+  code: string;
+  message: string;
+  errors?: Record<string, string[]>; // presente em erros de validação (422)
+}
+auth.ts:
+tsexport interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+}
+
+export interface LoginResponse {
+  user: User;
+  token: string;
+}
+shippingLabel.ts:
+ts// Usado no payload de criação (request)
+export interface AddressRequest {
+  name: string;
+  street1: string;
+  street2?: string | null;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+  phone?: string | null;
+  email?: string | null;
+}
+
+// Retornado pela API (inclui campos gerados pelo backend)
+export interface AddressResponse extends AddressRequest {
+  id: number;
+  user_id: number;
+  easypost_address_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Parcel no request usa number; no response o backend retorna string decimal ("10.00")
+export interface ParcelRequest {
+  length: number;
+  width: number;
+  height: number;
+  weight: number;
+}
+
+export interface ParcelResponse {
+  id: number;
+  user_id: number;
+  length: string;
+  width: string;
+  height: string;
+  weight: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type LabelFormat = 'PDF' | 'PNG' | 'ZPL';
+export type LabelStatus = 'DRAFT' | 'RATED' | 'PURCHASED' | 'FAILED';
+
+export interface CreateShippingLabelRequest {
+  from_address: AddressRequest;
+  to_address: AddressRequest;
+  parcel: ParcelRequest;
+  label_format?: LabelFormat;
+  rate_id?: string | null;
+}
+
+export interface ShippingLabel {
+  id: number;
+  user_id: number;
+  easypost_shipment_id: string;
+  easypost_rate_id: string;
+  tracking_code: string | null;
+  carrier: string;
+  service: string;
+  rate_amount: string;
+  rate_currency: string;
+  label_url: string | null;
+  label_format: LabelFormat;
+  status: LabelStatus;
+  purchased_at: string | null;
+  from_address: AddressResponse;
+  to_address: AddressResponse;
+  parcel: ParcelResponse;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+}
+
+Passo 6 — Services (endpoints da API)
+src/services/api/authService.ts:
+
+login(payload: LoginRequest): Promise<LoginResponse> → POST /auth/login
+
+src/services/api/shippingLabelService.ts:
+
+list(page?: number): Promise<PaginatedResponse<ShippingLabel>> → GET /shipping-labels?page=N
+get(id: number): Promise<ShippingLabel> → GET /shipping-labels/{id}
+create(payload: CreateShippingLabelRequest): Promise<ShippingLabel> → POST /shipping-labels
+
+src/services/api/healthService.ts:
+
+check(): Promise<{ status: string }> → GET /health-check
+
+
+Passo 7 — AuthContext
+src/contexts/AuthContext.tsx:
+
+Estado: user, token, isAuthenticated (derivado de !!token)
+Persiste token no localStorage com chave auth_token e user com auth_user
+Funções: login(email, password), logout()
+Carrega token/user do localStorage na inicialização
+
+src/hooks/useAuth.ts: hook que consome o context.
+
+Passo 8 — Rotas
+src/routes/ProtectedRoute.tsx: componente que verifica autenticação e redireciona para /login se não autenticado.
+src/App.tsx configura as rotas:
+
+/login → Login (pública)
+/ → redireciona para /labels
+/labels → LabelsList (protegida)
+/labels/new → CreateLabel (protegida)
+/labels/:id → LabelDetails (protegida)
+
+
+Passo 9 — Páginas
+
+Antes de implementar cada página, abra a imagem correspondente em docs/ e use-a como guia visual.
+
+pages/Login.tsx
+Referência visual: docs/login.png
+
+Formulário com email e senha
+Chama authService.login() via useAuth
+Em sucesso, redireciona para /labels
+Em erro, exibe error.message retornado pela API
+Loading state durante a requisição
+
+pages/LabelsList.tsx
+Referência visual: docs/listagem.png
+
+Tabela com as etiquetas do usuário
+Colunas: tracking code, destinatário (to_address.name), serviço, valor (rate_amount + rate_currency), status, ações
+Status como badge colorido (verde para PURCHASED, vermelho para FAILED, etc)
+Paginação simples (botões anterior/próximo, contador "Exibindo X-Y de Z")
+Botão "Nova etiqueta" no header → /labels/new
+Ação "Ver detalhes" (ícone olho) → /labels/{id}
+Ação "Baixar etiqueta" (ícone download) → window.open(label.label_url, '_blank') — exibir apenas quando label_url não for null
+Botão "Sair" (ícone logout) no header
+
+pages/CreateLabel.tsx
+Referência visual: docs/forms.png
+
+Formulário dividido em três seções (cards separados): Remetente, Destinatário, Pacote
+Remetente e destinatário lado a lado em grid de 2 colunas
+Campos de endereço: name, street1, street2, city, state (select com os 50 estados dos EUA + DC), zip, country (fixo "US", desabilitado), phone, email
+Campos de pacote em linha: length, width, height (polegadas), weight (oz), label_format (select)
+Validação básica no client: campos obrigatórios, zip com formato ##### ou #####-####, email válido
+Em sucesso, redireciona para /labels/{id} da etiqueta criada
+Em erro 422, exibe os erros por campo retornados em error.errors; em outros erros, exibe error.message
+Botão "Voltar" (seta) no header e botões "Cancelar" / "Gerar etiqueta" no rodapé
+
+pages/LabelDetails.tsx
+Referência visual: docs/detalhes.png
+
+Header com botão voltar, título "Etiqueta #{id}" e badge de status
+Grid de cards de métricas no topo: Transportadora, Serviço, Valor, Formato
+Card com código de rastreio (fonte monoespaçada) e botão de copiar
+Dois cards lado a lado com dados de Remetente e Destinatário
+Botão "Baixar etiqueta" no rodapé, visível apenas quando label_url não for null
+
+
+Passo 10 — Componentes base
+Em src/components/:
+
+Input.tsx — input com label e mensagem de erro
+Button.tsx — botão com variantes (primary, secondary) e estado loading
+Loading.tsx — spinner simples
+ErrorMessage.tsx — exibição padronizada de erros
+Badge.tsx — badge de status com variantes (success, danger, warning, info)
+Card.tsx (opcional) — wrapper de card com borda fina e padding consistente
+
+CSS simples, sem framework. Mantenha o visual coerente com as imagens de referência.
+
+Passo 11 — Endpoints da API (referência)
+POST  /api/auth/login                    → { email, password } → { user, token }
+GET   /api/shipping-labels?page=1        → lista paginada
+GET   /api/shipping-labels/{id}          → detalhes com from_address, to_address, parcel
+POST  /api/shipping-labels               → cria etiqueta
+GET   /api/health-check                  → { status: "ok" }
+Formato de erro padrão da API:
+json{ "code": "ALGUM_CODIGO", "message": "Descrição do erro." }
+Formato de erro de validação (422):
+json{ "code": "API_002", "message": "Dados inválidos.", "errors": { "campo": ["mensagem"] } }
+
+Passo 12 — Verificação final
+Rode npm run dev e confirme que o projeto sobe sem erros de TypeScript ou de compilação. Liste a estrutura final de src/ e mostre o conteúdo dos arquivos-chave: http.ts, AuthContext.tsx, shippingLabelService.ts, CreateLabel.tsx.
+Compare o resultado visual de cada página com a imagem de referência correspondente em docs/ e ajuste se houver discrepâncias significativas em layout, hierarquia ou agrupamento de elementos.
+
+Observações importantes
+
+Sem testes automatizados, sem Storybook, sem libs de form, sem libs de validação
+Não crie README
+TypeScript estrito mas sem tipos genéricos complexos
+Se algo já existir e for sobrescrever, pergunte antes
+Se alguma decisão não estiver clara, faça a escolha mais simples e mencione no final
+As imagens em docs/ são a fonte da verdade para o visual — se houver conflito entre o texto deste prompt e o que está nas imagens, siga as imagens
